@@ -94,15 +94,25 @@ ros::Subscriber<geometry_msgs::Twist> sub_cmd_vel(configuration.topic_cmd_vel, &
 ros::Subscriber<std_msgs::UInt16> sub_servo(configuration.topic_servo, servo_cb);
 
 void odometry_cb(const geometry_msgs::Twist& msg) {
-  float forward, lateral, wheelL, wheelR, wlength = 0.115, wradius = 0.0685/2, reduction = 48;
-  forward = msg.linear.x;
-  lateral = msg.angular.z;
+
+  float linear_velocity;
+  float angular_velocity; 
+  float width_robot = 0.115; 
+  float wradius = 0.0685/2;
+  
+  float wheelL;
+  float wheelR;
+
+  float gain = 1/48; // redução motores
+
+  linear_velocity = msg.linear.x;
+  angular_velocity = msg.angular.z;
 
   float min_vel = 0;
   float max_vel = 1; 
 
-  wheelR = ((forward / wradius) + (lateral * wlength) / (2 * wradius)) * reduction;
-  wheelL = ((forward / wradius) - (lateral * wlength) / (2 * wradius)) * reduction;
+  wheelR = gain*((linear_velocity) + (angular_velocity * width_robot/2)) / (wradius);
+  wheelL = gain*((linear_velocity) - (angular_velocity * width_robot/2)) / (wradius);
 
   sharp_msg.data = wheelR;
 
