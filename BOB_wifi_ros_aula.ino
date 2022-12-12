@@ -98,28 +98,41 @@ void odometry_cb(const geometry_msgs::Twist& msg) {
   forward = msg.linear.x;
   lateral = msg.angular.z;
 
+  float min_vel = 0;
+  float max_vel = 1; 
+
   wheelR = ((forward / wradius) + (lateral * wlength) / (2 * wradius)) * reduction;
   wheelL = ((forward / wradius) - (lateral * wlength) / (2 * wradius)) * reduction;
 
   sharp_msg.data = wheelR;
 
-  
-  if (wheelR >= 0) {
-    analogWrite(IN2, wheelR);
-    analogWrite(IN1, 0);
+  // saturate max velocity for the right wheel
+  if (wheelR > max_vel){
+    wheelR = max_vel; 
   }
-  else {
-    analogWrite(IN2, 0);
-    analogWrite(IN1, abs(wheelR));
+
+  // saturate max velocity for the left wheel
+  if (wheelL > max_vel){
+    wheelL = max_vel; 
   }
-  if (wheelL >= 0) {
-    analogWrite(IN3, wheelL);
-    analogWrite(IN4, 0);
+
+  // saturate min velocity for the right wheel
+  if (wheelR < min_vel) {
+    wheelR = min_vel; 
   }
-  else {
-    analogWrite(IN3, 0);
-    analogWrite(IN4, abs(wheelL));
-  }  
+
+  // saturate mi velocity for the left wheel
+  if(wheelL < min_vel) {
+    wheelL = min_vel; 
+  }
+
+  // write velocity for the right motor
+  analogWrite(IN2, wheelR);
+  analogWrite(IN1, 0);
+
+  // write velocity for the left motor 
+  analogWrite(IN3, wheelL);
+  analogWrite(IN4, 0);
 }
 
 void servo_cb( const std_msgs::UInt16& cmd_msg){
