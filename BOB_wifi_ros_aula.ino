@@ -7,9 +7,24 @@
 #include <Servo.h>
 #include <SharpIR.h>
 #include "Wire.h"
-#include <MPU6050_light.h>
 
-MPU6050 mpu(Wire);
+// ---- biblioteca mpu
+#include "I2Cdev.h"
+#include "MPU6050_6Axis_MotionApps20.h"
+
+MPU6050 mpu;
+#define OUTPUT_READABLE_YAWPITCHROLL
+
+// MPU control/status vars
+bool dmpReady = false;  // set true if DMP init was successful
+uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
+uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
+uint16_t fifoCount;     // count of all bytes currently in FIFO
+uint8_t fifoBuffer[64]; // FIFO storage buffer
+
+// orientation/motion vars
+float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+
 unsigned long timer = 0;
 
 // Define model and input pin:
@@ -151,15 +166,6 @@ void setup() {
   nh.advertise(pub_sharp);
   nh.advertise(pub_imu);
 
-  // IMU Initialization
-  Wire.begin();
-  byte status = mpu.begin();
-  while(status!=0){ } // stop everything if could not connect to MPU6050
-
-   delay(1000);
-    // mpu.upsideDownMounting = true; // uncomment this line if the MPU6050 is mounted upside-down
-  mpu.calcOffsets(); // gyro and accelero
-
   // configure GPIO's
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
@@ -173,16 +179,74 @@ void setup() {
   pinMode(EC2, INPUT);
   attachInterrupt(EC2, ISR_EC2, RISING);
 
-  Serial.begin(115200);
+  // --- mpu config
+      // join I2C bus (I2Cdev library doesn't do this automatically)
+    #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+        Wire.begin();
+        Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
+    #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
+        Fastwire::setup(400, true);
+    #endif
+
+    Serial.begin(115200);
+    while (!Serial);
+
+    // initialize device
+    Serial.println(F("Initializing I2C devices..."));
+    mpu.initialize();
+    pinMode(INTERRUPT_PIN, INPUT);
+
+    // verify connection
+    Serial.println(F("Testing device connections..."));
+    Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
+
+    // wait for ready
+    Serial.println(F("\nSend any character to begin DMP programming and demo: "));
+    while (Serial.available() && Serial.read()); // empty buffer
+    while (!Serial.available());                 // wait for data
+    while (Serial.available() && Serial.read()); // empty buffer again
+
+    // load and configure the DMP
+    Serial.println(F("Initializing DMP..."));
+    devStatus = mpu.dmpInitialize();
+
+    // supply your own gyro offsets here, scaled for min sensitivity
+    mpu.setXGyroOffset(220);
+    mpu.setYGyroOffset(76);
+    mpu.setZGyroOffset(-85);
+    mpu.setZAccelOffset(1788); // 1688 factory default for my test chip
+
+    // make sure it worked (returns 0 if so)
+    if (devStatus == 0) {
+        // Calibration Time: generate offsets and calibrate our MPU6050
+        mpu.CalibrateAccel(6);
+        mpu.CalibrateGyro(6);
+        mpu.PrintActiveOffsets();
+        // turn on the DMP, now that it's ready
+        Serial.println(F("Enabling DMP..."));
+        mpu.setDMPEnabled(true);
+
+
+        // set our DMP Ready flag so the main loop() function knows it's okay to use it
+        Serial.println(F("DMP ready! Waiting for first interrupt..."));
+        dmpReady = true;
+
+        // get expected DMP packet size for later comparison
+        packetSize = mpu.dmpGetFIFOPacketSize();
+    } else {
+        // ERROR!
+        // 1 = initial memory load failed
+        // 2 = DMP configuration updates failed
+        // (if it's going to break, usually the code will be 1)
+        Serial.print(F("DMP Initialization failed (code "));
+        Serial.print(devStatus);
+        Serial.println(F(")"));
+    }
+
   
 }
 
-
 void loop() {
-  delay(50);
-  digitalWrite(LED, LOW);
-  delay(50);                 
-  digitalWrite(LED, HIGH);
   
   lenc_msg.data = EC1_count;
   pub_lenc.publish(&lenc_msg);
@@ -193,10 +257,23 @@ void loop() {
   sharp_msg.data = SharpSensor.distance()*1.8;
   pub_sharp.publish(&sharp_msg);
 
-  mpu.update();
-  imu_msg.data = mpu.getAngleZ();
-  pub_imu.publish(&imu_msg);
+      // if programming failed, don't try to do anything
+    if (!dmpReady) return;
+    // read a packet from FIFO
+    if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
 
+        // display Euler angles in degrees
+        mpu.dmpGetQuaternion(&q, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+        Serial.print("ypr\t");
+        Serial.print(ypr[0]I);
+        Serial.print("\t");
+        Serial.print(ypr[1]);
+        Serial.print("\t");
+        Serial.println(ypr[2]);
+
+    }
 
   nh.spinOnce();
 }
