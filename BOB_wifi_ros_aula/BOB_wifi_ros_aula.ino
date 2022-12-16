@@ -71,11 +71,11 @@ int EC2_count = 0;
 
 struct config_t
 {
-  const char* ssid = "UtBot - rede linda";
-  const char* password = "utbotlaser";
+  const char* ssid = "Dinossauro_Conectado";
+  const char* password = "Dinossauro_Conectado";
   
   uint16_t serverPort = base_port; 
-  int serverIP[4] = {192, 168, 1, 110}; // "ip do computador com roscore"
+  int serverIP[4] = {192, 168, 1, 103}; // "ip do computador com roscore"
   int robot = 0;
   char* topic_servo = top_servo;
   char* topic_lenc = top_lenc;
@@ -103,7 +103,7 @@ void odometry_cb(const geometry_msgs::Twist& msg) {
   float wheelL;
   float wheelR;
 
-  float gain = 1/48; // redução motores
+  float gain = 48; // redução motores
 
   linear_velocity = msg.linear.x;
   angular_velocity = msg.angular.z;
@@ -235,8 +235,6 @@ void setup_imu()
 
 float get_yaw()
 {
-  // if programming failed, don't try to do anything
-  if (!dmpReady) return 1000;
     
   // read a packet from FIFO
   if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
