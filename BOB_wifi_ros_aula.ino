@@ -109,7 +109,7 @@ void odometry_cb(const geometry_msgs::Twist& msg) {
   angular_velocity = msg.angular.z;
 
   float min_vel = 0;
-  float max_vel = 1; 
+  float max_vel = 250; 
 
   wheelR = gain*((linear_velocity) + (angular_velocity * width_robot/2)) / (wradius);
   wheelL = gain*((linear_velocity) - (angular_velocity * width_robot/2)) / (wradius);
