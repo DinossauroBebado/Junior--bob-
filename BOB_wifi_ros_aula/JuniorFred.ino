@@ -1,3 +1,5 @@
+#define ROSSERIAL_ARDUINO_TCP
+
 #include <ESP8266WiFi.h>
 #include <ros.h>
 #include <geometry_msgs/Twist.h>
@@ -33,49 +35,68 @@ float euler[3];         // [psi, theta, phi]    Euler angle container
 
 unsigned long timer = 0;
 
+// ---------- sensor config
 // Define model and input pin:
 #define IRPin A0
 #define model 1080
 SharpIR SharpSensor = SharpIR(IRPin, model);
 
+// ---------- config network
 #define debug 1
 #define base_port 11411 //usar outros números para ligar mais robôs na mesma porta
 
-//----------------------
+// ---------- config servo motor
+Servo servo; 
+int pos = 0;
+int dir = 0;
+int SRV = 0;
+
+// ---------- driver motor pins
+int IN1 = 3;
+int IN2 = 1;
+int IN3 = 16;
+int IN4 = 13;
+
+// ---------- encoder pin
+int EC1 = 12;
+int EC2 = 14;
+
+// ---------- tick count 
+int EC1_count = 0;
+int EC2_count = 0;
+
+// ---------- LED pin for debug 
+int LED = 2;
+
+// kinematics variables 
+float wheelL;
+float wheelR;
+
+//----------- topics name 
 #define top_cmd_vel "/bob/cmd_vel"
 #define top_servo   "/bob/ir_motor"
 #define top_sharp   "/bob/ir_sensor"
 #define top_imu     "/bob/heading"
 #define top_renc    "/bob/raw/right_ticks"
 #define top_lenc    "/bob/raw/left_ticks"
-//----------------------
+#define top_pwm_lm  "/bob/pwm/left"
+#define top_pwm_rm  "/bob/pwm/right"
+#define top_write_pwm_lm "/bob/write/pwm/left"
+#define top_write_pwm_rm "/bob/write/pwm/right"
 
-Servo servo; 
-int pos = 0;
-int dir = 0;
-//----------------------
-//Ponte-H
-int IN1 = 3;
-int IN2 = 1;
-int IN3 = 16;
-int IN4 = 13;
-int LED = 2;
-int SRV = 0;
-int EC1 = 12;
-int EC2 = 14;
-//----------------------
-
-int EC1_count = 0;
-int EC2_count = 0;
-
-
+// wifi config 
 struct config_t
 {
-  const char* ssid = "Dinossauro_Conectado";
-  const char* password = "Dinossauro_Conectado";
+
+  // roteador Gui
+  // const char* ssid = "Dinossauro_Conectado";
+  // const char* password = "Dinossauro_Conectado";
+
+  const char* ssid = "Le";
+  const char* password = "leticia21";
   
   uint16_t serverPort = base_port; 
-  int serverIP[4] = {192, 168, 1, 103}; // "ip do computador com roscore"
+  int serverIP[4] = {192, 168, 13, 213}; // "ip do computador com roscore"
   int robot = 0;
   char* topic_servo = top_servo;
   char* topic_lenc = top_lenc;
@@ -83,47 +104,80 @@ struct config_t
   char* topic_cmd_vel = top_cmd_vel;
   char* topic_sharp = top_sharp;
   char* topic_imu = top_imu;
+  char* topic_pwml = top_pwm_lm; 
+  char* topic_pwmr = top_pwm_rm;
+  char* topic_write_pwml = top_write_pwm_lm;
+  char* topic_write_pwmr = top_write_pwm_rm; 
 } configuration;
 
-std_msgs::Float32 sharp_msg, lenc_msg, renc_msg, yaw_msg, imu_msg;
+// ----- messages
+std_msgs::Float32 sharp_msg; 
+std_msgs::Float32 lenc_msg;     // left encoder
+std_msgs::Float32 renc_msg;     // right encoder
+std_msgs::Float32 imu_msg;
+std_msgs::Float32 pwmL_msg; 
+std_msgs::Float32 pwmR_msg; 
+
+// ---- publishers 
 ros::Publisher pub_lenc(configuration.topic_lenc, &lenc_msg);
 ros::Publisher pub_renc(configuration.topic_renc, &renc_msg);
 ros::Publisher pub_sharp(configuration.topic_sharp, &sharp_msg);
 ros::Publisher pub_imu(configuration.topic_imu, &imu_msg);
+ros::Publisher pub_pwml(configuration.topic_pwml, &pwmL_msg); 
+ros::Publisher pub_pwmr(configuration.topic_pwmr, &pwmR_msg); 
+
+// ---- subscribers 
 ros::Subscriber<geometry_msgs::Twist> sub_cmd_vel(configuration.topic_cmd_vel, &odometry_cb);
-ros::Subscriber<std_msgs::UInt16> sub_servo(configuration.topic_servo, servo_cb);
+ros::Subscriber<std_msgs::UInt16> sub_servo(configuration.topic_servo, &servo_cb);
+ros::Subscriber<std_msgs::UInt16> sub_write_pwml(configuration.topic_write_pwml, &write_leftPWM_cb); 
+ros::Subscriber<std_msgs::UInt16> sub_write_pwmr(configuration.topic_write_pwmr, &write_rightPWM_cb); 
+
+void write_leftPWM_cb(const std_msgs::UInt16& msg){
+  analogWrite(IN3, msg.data);
+  analogWrite(IN4, 0);
+}
+
+void write_rightPWM_cb(const std_msgs::UInt16& msg){
+  analogWrite(IN2, msg.data);
+  analogWrite(IN1, 0);
+}
 
 void odometry_cb(const geometry_msgs::Twist& msg) {
 
   float linear_velocity;
   float angular_velocity; 
-  float width_robot = 0.115; 
-  float wradius = 0.0685/2;
-  
-  float wheelL;
-  float wheelR;
+  float width_robot = 0.140; 
+  float wradius = 0.0660/2;
 
-  float gain = 48; // redução motores
+  float gain_linear = 10; 
+  float gain_angular = 100;
+
+  int offset = 10; 
 
   linear_velocity = msg.linear.x;
   angular_velocity = msg.angular.z;
 
   float min_vel = 0;
-  float max_vel = 250; 
+  float left_max_vel = 250 - offset; 
+  float right_max_vel = 250;
 
-  wheelR = gain*((linear_velocity) + (angular_velocity * width_robot/2)) / (wradius);
-  wheelL = gain*((linear_velocity) - (angular_velocity * width_robot/2)) / (wradius);
+  wheelR = (gain_linear*(linear_velocity) + gain_angular*(angular_velocity * width_robot/2)) / (wradius);
+  wheelL = (gain_linear*(linear_velocity) - gain_angular*(angular_velocity * width_robot/2)) / (wradius);
+
+  if (wheelR != 0){
+  wheelR = wheelR + offset; 
+  }
 
   sharp_msg.data = wheelR;
 
   // saturate max velocity for the right wheel
-  if (wheelR > max_vel){
-    wheelR = max_vel; 
+  if (wheelR > right_max_vel){
+    wheelR = right_max_vel; 
   }
 
   // saturate max velocity for the left wheel
-  if (wheelL > max_vel){
-    wheelL = max_vel; 
+  if (wheelL > left_max_vel){
+    wheelL = left_max_vel; 
   }
 
   // saturate min velocity for the right wheel
@@ -266,10 +320,15 @@ void setup() {
   nh.initNode();
   nh.subscribe(sub_cmd_vel);
   nh.subscribe(sub_servo);
+  nh.subscribe(sub_write_pwml); 
+  nh.subscribe(sub_write_pwmr);
+
   nh.advertise(pub_lenc);
   nh.advertise(pub_renc);
   nh.advertise(pub_sharp);
   nh.advertise(pub_imu);
+  nh.advertise(pub_pwml); 
+  nh.advertise(pub_pwmr); 
 
   // configure GPIO's
   pinMode(IN1, OUTPUT);
@@ -309,6 +368,11 @@ void loop() {
 
   imu_msg.data = get_yaw(); 
   pub_imu.publish(&imu_msg); 
+
+  pwmL_msg.data = wheelL; 
+  pwmR_msg.data = wheelR;
+  pub_pwml.publish(&pwmL_msg); 
+  pub_pwmr.publish(&pwmR_msg); 
 
   nh.spinOnce();
 }
