@@ -2,7 +2,7 @@
 % o comando: 
 % rosrun turtlesim turtlesim_node
 
-% rosinit; 
+rosinit; 
 
 % ------- config publisher
 msg_twist = rosmessage('geometry_msgs/Twist') ;
@@ -18,18 +18,19 @@ msg_twist.Angular.Z = 0;
 send(pub_twist,msg_twist);
 
 % setpoint xy
-target_x = 0.4;
+target_x = 1;
 target_y = 0;
 
 % constantes PID linaer 
-kp_linear = 0;
-ki_linear = 0; 
-kd_linear = 0; 
+kp_linear = 2; %1.5
+ki_linear = 0.9; %0.9
+kd_linear = 0.1; %0.1
 
 % constantes PID angular
-kp_angular = 0.1;
-ki_angular = 0;
-kd_angular = 0; 
+kp_angular = 2.1;  %2.1
+ki_angular = 0.5;  %0.1
+kd_angular = 0.1;  %0.1
+
 
 % variavais para calculo deltaT
 elapsedTime = 0; 
@@ -44,7 +45,7 @@ vel_angular_integral = 0;
 error_linear =  99; 
 error_angular =  99;   % fazer com que o scrip entre na condição while abaixo
 
-while(abs(error_angular) > pi/10 && abs(error_linear) >= 1/20)
+while((abs(error_angular) > 0.1) || (abs(error_linear) > 0.1))
     
     % recebe dados de odometria
     odom_data = receive(sub_odom,10); 
@@ -57,14 +58,16 @@ while(abs(error_angular) > pi/10 && abs(error_linear) >= 1/20)
     
     error_linear =  hypot((target_y - odom_data.Pose.Pose.Position.Y),(target_x - odom_data.Pose.Pose.Position.X));
         
-    setpoint_angle = atan2((target_x-odom_data.Pose.Pose.Position.X),(target_y-odom_data.Pose.Pose.Position.Y));
+    setpoint_angle = atan((target_y-odom_data.Pose.Pose.Position.Y)/(target_x-odom_data.Pose.Pose.Position.X));
         
     error_angular = setpoint_angle - yaw;
 
     % condição para complementar o angulo caso necessário
-    if(error_angular<0 && odom_data.Pose.Pose.Orientation.Z > 0)
-        error_angular = (setpoint_angle - odom_data.Pose.Pose.Orientation.Z) + 2*pi; 
-    end
+     yaw = quat2angle(quat,'XYZ');  
+    
+%      if(error_angular<0 && odom_data.Pose.Pose.Orientation.Z > 0)
+%         error_angular = (setpoint_angle - odom_data.Pose.Pose.Orientation.Z) + 2*pi; 
+%     end
 
     % Delta T para calculo de derivada e integral
     elapsedTime = etime(clock, previous_time); 
@@ -85,6 +88,8 @@ while(abs(error_angular) > pi/10 && abs(error_linear) >= 1/20)
     vel_linear = vel_linear_proporcional + vel_linear_integral + vel_linear_derivative; 
     vel_angular = vel_angular_proporcional + vel_angular_integral + vel_angular_derivative; 
 
+    
+    fprintf("velocidade angular: %f", vel_angular); 
     msg_twist.Linear.X = vel_linear;
     msg_twist.Angular.Z = vel_angular;
 

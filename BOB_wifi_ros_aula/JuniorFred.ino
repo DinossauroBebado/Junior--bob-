@@ -92,11 +92,14 @@ struct config_t
   // const char* ssid = "Dinossauro_Conectado";
   // const char* password = "Dinossauro_Conectado";
 
-  const char* ssid = "Le";
-  const char* password = "leticia21";
+  // const char* ssid = "AJP44";
+  // const char* password = "Grano503863";
+
+  const char* ssid = "UtBot - rede linda";
+  const char* password = "utbotlaser";
   
   uint16_t serverPort = base_port; 
-  int serverIP[4] = {192, 168, 13, 213}; // "ip do computador com roscore"
+  int serverIP[4] = {192, 168, 15, 11}; // "ip do computador com roscore"
   int robot = 0;
   char* topic_servo = top_servo;
   char* topic_lenc = top_lenc;
@@ -106,8 +109,8 @@ struct config_t
   char* topic_imu = top_imu;
   char* topic_pwml = top_pwm_lm; 
   char* topic_pwmr = top_pwm_rm;
-  char* topic_write_pwml = top_write_pwm_lm;
-  char* topic_write_pwmr = top_write_pwm_rm; 
+  // char* topic_write_pwml = top_write_pwm_lm;
+  // char* topic_write_pwmr = top_write_pwm_rm; 
 } configuration;
 
 // ----- messages
@@ -129,18 +132,18 @@ ros::Publisher pub_pwmr(configuration.topic_pwmr, &pwmR_msg);
 // ---- subscribers 
 ros::Subscriber<geometry_msgs::Twist> sub_cmd_vel(configuration.topic_cmd_vel, &odometry_cb);
 ros::Subscriber<std_msgs::UInt16> sub_servo(configuration.topic_servo, &servo_cb);
-ros::Subscriber<std_msgs::UInt16> sub_write_pwml(configuration.topic_write_pwml, &write_leftPWM_cb); 
-ros::Subscriber<std_msgs::UInt16> sub_write_pwmr(configuration.topic_write_pwmr, &write_rightPWM_cb); 
+// ros::Subscriber<std_msgs::UInt16> sub_write_pwml(configuration.topic_write_pwml, &write_leftPWM_cb); 
+// ros::Subscriber<std_msgs::UInt16> sub_write_pwmr(configuration.topic_write_pwmr, &write_rightPWM_cb); 
 
-void write_leftPWM_cb(const std_msgs::UInt16& msg){
-  analogWrite(IN3, msg.data);
-  analogWrite(IN4, 0);
-}
+// void write_leftPWM_cb(const std_msgs::UInt16& msg){
+//   analogWrite(IN3, msg.data);
+//   analogWrite(IN4, 0);
+// }
 
-void write_rightPWM_cb(const std_msgs::UInt16& msg){
-  analogWrite(IN2, msg.data);
-  analogWrite(IN1, 0);
-}
+// void write_rightPWM_cb(const std_msgs::UInt16& msg){
+//   analogWrite(IN2, msg.data);
+//   analogWrite(IN1, 0);
+// }
 
 void odometry_cb(const geometry_msgs::Twist& msg) {
 
@@ -152,7 +155,7 @@ void odometry_cb(const geometry_msgs::Twist& msg) {
   float gain_linear = 10; 
   float gain_angular = 100;
 
-  int offset = 10; 
+  int offset = 0; 
 
   linear_velocity = msg.linear.x;
   angular_velocity = msg.angular.z;
@@ -320,8 +323,8 @@ void setup() {
   nh.initNode();
   nh.subscribe(sub_cmd_vel);
   nh.subscribe(sub_servo);
-  nh.subscribe(sub_write_pwml); 
-  nh.subscribe(sub_write_pwmr);
+  // nh.subscribe(sub_write_pwml); 
+  // nh.subscribe(sub_write_pwmr);
 
   nh.advertise(pub_lenc);
   nh.advertise(pub_renc);
